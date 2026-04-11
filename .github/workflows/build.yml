@@ -31,6 +31,8 @@ jobs:
           security list-keychain -d user -s $KCH
           echo "=== Identities in keychain ==="
           security find-identity -v -p codesigning $KCH
+          echo "=== All certs in keychain (SHA1) ==="
+          security find-certificate -a -Z $KCH 2>/dev/null | grep -E "SHA-1|labl" || true
 
       - name: Install Provisioning Profile
         env:
@@ -44,6 +46,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/pp.plist
           /usr/libexec/PlistBuddy -c "Print :Name" $RUNNER_TEMP/pp.plist
           /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $RUNNER_TEMP/pp.plist
+          /usr/libexec/PlistBuddy -c "Print :ExpirationDate" $RUNNER_TEMP/pp.plist
+          echo "=== App ID in profile ==="
+          /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" $RUNNER_TEMP/pp.plist 2>&1 || echo "N/A"
+          echo "=== Certs allowed in profile (first 3) ==="
+          /usr/libexec/PlistBuddy -c "Print :DeveloperCertificates:0" $RUNNER_TEMP/pp.plist 2>&1 | xxd | head -4 || echo "N/A"
           UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/pp.plist)
           NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $RUNNER_TEMP/pp.plist)
           echo "PP_UUID=$UUID" >> $GITHUB_ENV
@@ -60,10 +67,13 @@ jobs:
         run: |
           KCH=$RUNNER_TEMP/app.keychain-db
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
-          echo "=== Code signing identity ==="
+          echo "=== Code signing identity in keychain ==="
           security find-identity -v -p codesigning $KCH
-          echo "=== Using profile UUID: $PP_UUID ==="
-          echo "=== Using profile name: $PP_NAME ==="
+          echo "=== PP_UUID=$PP_UUID ==="
+          echo "=== PP_NAME=$PP_NAME ==="
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "=== Profiles dir at archive time ==="
+          ls -la "$PROFILES_DIR/" 2>&1 || echo "DIR MISSING OR EMPTY"
           xcodebuild archive \
             -project CropsIntel.xcodeproj \
             -scheme CropsIntel \
