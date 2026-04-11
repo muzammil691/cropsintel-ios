@@ -22,47 +22,69 @@ jobs:
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 -d > $CERT
-          echo "Cert size: $(wc -c < $CERT) bytes, MD5: $(md5 -q $CERT)"
+          echo "Cert size: $(wc -c < $CERT) bytes"
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security set-keychain-settings -lut 21600 $KCH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security import $CERT -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KCH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KCH
           security list-keychain -d user -s $KCH
+          echo "=== Identities in keychain ==="
+          security find-identity -v -p codesigning $KCH
 
-      - name: Setup App Store Connect API Key
+      - name: Install Provisioning Profile
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          MOBILEPROVISION_BASE64: ${{ secrets.MOBILEPROVISION_BASE64 }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
-          echo "Key written: $(wc -c < ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8) bytes"
+          PP_PATH=$RUNNER_TEMP/pp.mobileprovision
+          echo -n "$MOBILEPROVISION_BASE64" | base64 -d > $PP_PATH
+          echo "Profile size: $(wc -c < $PP_PATH) bytes"
+          security cms -D -i $PP_PATH -o $RUNNER_TEMP/pp.plist
+          echo "=== Profile fields ==="
+          /usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/pp.plist
+          /usr/libexec/PlistBuddy -c "Print :Name" $RUNNER_TEMP/pp.plist
+          /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" $RUNNER_TEMP/pp.plist
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/pp.plist)
+          NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" $RUNNER_TEMP/pp.plist)
+          echo "PP_UUID=$UUID" >> $GITHUB_ENV
+          echo "PP_NAME=$NAME" >> $GITHUB_ENV
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          cp "$PP_PATH" "$PROFILES_DIR/$UUID.mobileprovision"
+          echo "=== Installed profiles ==="
+          ls -la "$PROFILES_DIR/"
 
       - name: Build Archive
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          KCH=$RUNNER_TEMP/app.keychain-db
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
+          echo "=== Code signing identity ==="
+          security find-identity -v -p codesigning $KCH
+          echo "=== Using profile UUID: $PP_UUID ==="
+          echo "=== Using profile name: $PP_NAME ==="
           xcodebuild archive \
             -project CropsIntel.xcodeproj \
             -scheme CropsIntel \
             -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID $ASC_KEY_ID \
-            -authenticationKeyIssuerID $ASC_ISSUER \
             DEVELOPMENT_TEAM=754P32CRTB \
-            CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$PP_UUID" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
       - name: Export IPA
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
-          cat > $RUNNER_TEMP/export.plist << 'PLIST'
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          cat > $RUNNER_TEMP/export.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -71,6 +93,13 @@ jobs:
             <string>app-store</string>
             <key>teamID</key>
             <string>754P32CRTB</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.cropsintel.app</key>
+              <string>$PP_NAME</string>
+            </dict>
             <key>uploadSymbols</key>
             <true/>
             <key>compileBitcode</key>
@@ -91,7 +120,6 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
           xcrun altool --upload-app \
             --type ios \
