@@ -38,9 +38,10 @@ jobs:
         run: |
           PP_PATH=$RUNNER_TEMP/profile.mobileprovision
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > $PP_PATH
+          echo "Profile size: $(wc -c < $PP_PATH) bytes"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PP_UUID=$(security cms -D -i $PP_PATH | plutil -extract UUID raw -)
-          PP_NAME=$(security cms -D -i $PP_PATH | plutil -extract Name raw -)
+          PP_UUID="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970"
+          PP_NAME="CropsIntel AppStore Distribution"
           cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
           echo "PP_UUID=$PP_UUID" >> $GITHUB_ENV
           echo "PP_NAME=$PP_NAME" >> $GITHUB_ENV
