@@ -32,17 +32,21 @@ jobs:
           echo "=== Identities in keychain ==="
           security find-identity -v -p codesigning $KCH
 
+      - name: Install Provisioning Profile
+        run: |
+          PP_UUID="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970"
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          base64 -d < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
+          echo "Profile installed: ${PP_UUID}"
+          echo "Profile size: $(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision) bytes"
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
+
       - name: Build Archive
         env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           KCH=$RUNNER_TEMP/app.keychain-db
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           echo "=== Code signing identity ==="
           security find-identity -v -p codesigning $KCH
           xcodebuild archive \
@@ -51,22 +55,14 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID $ASC_KEY_ID \
-            -authenticationKeyIssuerID $ASC_ISSUER \
             DEVELOPMENT_TEAM=754P32CRTB \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
       - name: Export IPA
-        env:
-          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           cat > $RUNNER_TEMP/export.plist << PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -77,7 +73,12 @@ jobs:
             <key>teamID</key>
             <string>754P32CRTB</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.cropsintel.app</key>
+              <string>CropsIntel AppStore Distribution</string>
+            </dict>
             <key>uploadSymbols</key>
             <true/>
             <key>compileBitcode</key>
@@ -88,11 +89,7 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/export.plist \
-            -exportPath $RUNNER_TEMP/export \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID $ASC_KEY_ID \
-            -authenticationKeyIssuerID $ASC_ISSUER
+            -exportPath $RUNNER_TEMP/export
 
       - name: Upload to TestFlight
         env:
