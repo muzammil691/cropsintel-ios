@@ -12,17 +12,17 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
       - name: Install Certificate
         env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT
+          # Decode cert from repo file instead of secret (avoids paste/encoding issues)
+          base64 -d < .github/cert_b64.txt > $CERT 2>/dev/null || base64 -D < .github/cert_b64.txt > $CERT
           CERT_SIZE=$(wc -c < $CERT | tr -d ' ')
           echo "Cert size: $CERT_SIZE bytes"
           if [ "$CERT_SIZE" -lt 100 ]; then
-            echo "ERROR: Certificate file is too small ($CERT_SIZE bytes). The BUILD_CERTIFICATE_BASE64 secret is likely empty or corrupt."
+            echo "ERROR: Certificate file is too small ($CERT_SIZE bytes). Decode may have failed."
             exit 1
           fi
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KCH
@@ -39,7 +39,8 @@ jobs:
         run: |
           PP_UUID="1d9c5356-3263-4fa3-9a22-5a94768d7d38"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          base64 --decode < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
+          base64 -d < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null || \
+          base64 -D < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
           PP_SIZE=$(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision | tr -d ' ')
           echo "Profile installed: ${PP_UUID}"
           echo "Profile size: $PP_SIZE bytes"
