@@ -74,6 +74,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE="$PP_UUID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PP_NAME" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
       - name: Export IPA
