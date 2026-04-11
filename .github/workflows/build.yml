@@ -24,7 +24,12 @@ jobs:
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT
-          echo "Cert size: $(wc -c < $CERT) bytes"
+          CERT_SIZE=$(wc -c < $CERT | tr -d ' ')
+          echo "Cert size: $CERT_SIZE bytes"
+          if [ "$CERT_SIZE" -lt 100 ]; then
+            echo "ERROR: Certificate file is too small ($CERT_SIZE bytes). The BUILD_CERTIFICATE_BASE64 secret is likely empty or corrupt."
+            exit 1
+          fi
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security set-keychain-settings -lut 21600 $KCH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
@@ -39,9 +44,25 @@ jobs:
           PP_UUID="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           base64 --decode < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
+          PP_SIZE=$(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision | tr -d ' ')
           echo "Profile installed: ${PP_UUID}"
-          echo "Profile size: $(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision) bytes"
+          echo "Profile size: $PP_SIZE bytes"
+          if [ "$PP_SIZE" -lt 100 ]; then
+            echo "ERROR: Profile file is too small ($PP_SIZE bytes). Decode may have failed."
+            exit 1
+          fi
+          echo "=== Profile name ==="
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -A1 '<key>Name</key>' || echo "Could not read profile name"
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Patch Project for Manual Signing
+        run: |
+          echo "=== Before patch ==="
+          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE' CropsIntel.xcodeproj/project.pbxproj || true
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' CropsIntel.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = 754P32CRTB;/DEVELOPMENT_TEAM = 754P32CRTB; PROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";/g' CropsIntel.xcodeproj/project.pbxproj
+          echo "=== After patch ==="
+          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE' CropsIntel.xcodeproj/project.pbxproj || true
 
       - name: Build Archive
         env:
@@ -60,7 +81,6 @@ jobs:
             DEVELOPMENT_TEAM=754P32CRTB \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970" \
             PROVISIONING_PROFILE_SPECIFIER="CropsIntel AppStore Distribution" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
