@@ -36,7 +36,7 @@ jobs:
           security find-identity -v -p codesigning $KCH
       - name: Install Provisioning Profile
         run: |
-          PP_UUID="1d9c5356-3263-4fa3-9a22-5a94768d7d38"
+          PP_UUID="caa24ef6-4123-4286-8dbb-8ad368868459"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           base64 -d < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null || \
           base64 -D < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
@@ -56,7 +56,7 @@ jobs:
           old = 'DEVELOPMENT_TEAM = 754P32CRTB;'
           new_block = (
               'DEVELOPMENT_TEAM = 754P32CRTB;\n'
-              '\t\t\t\tPROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";\n'
+              '\t\t\t\tPROVISIONING_PROFILE = "caa24ef6-4123-4286-8dbb-8ad368868459";\n'
               '\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";\n'
               '\t\t\t\tCODE_SIGN_IDENTITY = "iPhone Distribution";'
           )
@@ -83,7 +83,7 @@ jobs:
             DEVELOPMENT_TEAM=754P32CRTB \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE="1d9c5356-3263-4fa3-9a22-5a94768d7d38" \
+            PROVISIONING_PROFILE="caa24ef6-4123-4286-8dbb-8ad368868459" \
             PROVISIONING_PROFILE_SPECIFIER="CropsIntel AppStore Distribution" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
       - name: Export IPA
