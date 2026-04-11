@@ -1,4 +1,5 @@
 name: Build and Upload to App Store
+
 on:
   push:
     branches: [main]
@@ -7,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: macos-14
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +23,7 @@ jobs:
         run: |
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 -d > $CERT
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $CERT
           echo "Cert size: $(wc -c < $CERT) bytes"
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security set-keychain-settings -lut 21600 $KCH
@@ -36,7 +38,7 @@ jobs:
         run: |
           PP_UUID="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          base64 -d < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
+          base64 --decode < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
           echo "Profile installed: ${PP_UUID}"
           echo "Profile size: $(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision) bytes"
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
@@ -59,6 +61,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970" \
+            PROVISIONING_PROFILE_SPECIFIER="CropsIntel AppStore Distribution" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
       - name: Export IPA
