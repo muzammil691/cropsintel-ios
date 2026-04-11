@@ -17,7 +17,7 @@ jobs:
         run: |
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
-          # Decode cert from repo file instead of secret (avoids paste/encoding issues)
+          # Decode cert from repo file (avoids secret paste/encoding issues)
           base64 -d < .github/cert_b64.txt > $CERT 2>/dev/null || base64 -D < .github/cert_b64.txt > $CERT
           CERT_SIZE=$(wc -c < $CERT | tr -d ' ')
           echo "Cert size: $CERT_SIZE bytes"
@@ -30,7 +30,10 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security import $CERT -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KCH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KCH
-          security list-keychain -d user -s $KCH
+          # CRITICAL: keep login keychain in the search list so Apple root certs are available
+          security list-keychain -d user -s $KCH login.keychain-db
+          echo "=== Keychain search list ==="
+          security list-keychain -d user
           echo "=== Identities in keychain ==="
           security find-identity -v -p codesigning $KCH
           echo "=== Certificate SHA-1 ==="
@@ -59,11 +62,28 @@ jobs:
           PBXPROJ="CropsIntel.xcodeproj/project.pbxproj"
           echo "=== Before patch ==="
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY' "$PBXPROJ" || true
+
+          # Switch to manual signing
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' "$PBXPROJ"
-          sed -i '' '/DEVELOPMENT_TEAM = 754P32CRTB;/a\
-            PROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";\
-            PROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";\
-            CODE_SIGN_IDENTITY = "iPhone Distribution";' "$PBXPROJ"
+
+          # Use python to safely insert signing settings (avoids BSD sed newline issues)
+          python3 - "$PBXPROJ" << 'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path, 'r') as f:
+    content = f.read()
+# Insert signing settings after each DEVELOPMENT_TEAM line
+old = 'DEVELOPMENT_TEAM = 754P32CRTB;'
+new = '''DEVELOPMENT_TEAM = 754P32CRTB;
+\t\t\t\tPROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";
+\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";
+\t\t\t\tCODE_SIGN_IDENTITY = "iPhone Distribution";'''
+content = content.replace(old, new)
+with open(path, 'w') as f:
+    f.write(content)
+print("Patched successfully")
+PYEOF
+
           echo "=== After patch ==="
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY\|DEVELOPMENT_TEAM' "$PBXPROJ" || true
       - name: Build Archive
@@ -90,6 +110,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE="1d9c5356-3263-4fa3-9a22-5a94768d7d38" \
+            PROVISIONING_PROFILE_SPECIFIER="CropsIntel AppStore Distribution" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
       - name: Export IPA
         run: |
