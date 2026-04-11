@@ -38,6 +38,8 @@ jobs:
           security list-keychain -d user -s $KCH
           echo "=== Identities in keychain ==="
           security find-identity -v -p codesigning $KCH
+          echo "=== Certificate SHA-1 ==="
+          security find-identity -v -p codesigning $KCH | grep "iPhone Distribution" | head -1
 
       - name: Install Provisioning Profile
         run: |
@@ -51,18 +53,25 @@ jobs:
             echo "ERROR: Profile file is too small ($PP_SIZE bytes). Decode may have failed."
             exit 1
           fi
-          echo "=== Profile name ==="
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -A1 '<key>Name</key>' || echo "Could not read profile name"
+          echo "=== Profile details ==="
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -A1 'Name\|TeamIdentifier\|UUID\|ExpirationDate' || echo "Could not parse profile"
+          echo "=== Certificates in profile ==="
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -c '<data>' || echo "0 certs"
+          echo "=== All installed profiles ==="
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
 
       - name: Patch Project for Manual Signing
         run: |
+          PBXPROJ="CropsIntel.xcodeproj/project.pbxproj"
           echo "=== Before patch ==="
-          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE' CropsIntel.xcodeproj/project.pbxproj || true
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' CropsIntel.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = 754P32CRTB;/DEVELOPMENT_TEAM = 754P32CRTB; PROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";/g' CropsIntel.xcodeproj/project.pbxproj
+          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY' "$PBXPROJ" || true
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' "$PBXPROJ"
+          sed -i '' '/DEVELOPMENT_TEAM = 754P32CRTB;/a\
+            PROVISIONING_PROFILE = "8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970";\
+            PROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";\
+            CODE_SIGN_IDENTITY = "iPhone Distribution";' "$PBXPROJ"
           echo "=== After patch ==="
-          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE' CropsIntel.xcodeproj/project.pbxproj || true
+          grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY\|DEVELOPMENT_TEAM' "$PBXPROJ" || true
 
       - name: Build Archive
         env:
@@ -72,6 +81,12 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           echo "=== Code signing identity ==="
           security find-identity -v -p codesigning $KCH
+          echo "=== Installed profiles ==="
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "--- $f ---"
+            security cms -D -i "$f" 2>/dev/null | grep -A1 '<key>Name</key>' | tail -1 || true
+            security cms -D -i "$f" 2>/dev/null | grep -A1 '<key>UUID</key>' | tail -1 || true
+          done
           xcodebuild archive \
             -project CropsIntel.xcodeproj \
             -scheme CropsIntel \
@@ -81,7 +96,7 @@ jobs:
             DEVELOPMENT_TEAM=754P32CRTB \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="CropsIntel AppStore Distribution" \
+            PROVISIONING_PROFILE="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
 
       - name: Export IPA
