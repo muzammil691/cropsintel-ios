@@ -17,7 +17,6 @@ jobs:
         run: |
           CERT=$RUNNER_TEMP/cert.p12
           KCH=$RUNNER_TEMP/app.keychain-db
-          # Decode cert from repo file (avoids secret paste/encoding issues)
           base64 -d < .github/cert_b64.txt > $CERT 2>/dev/null || base64 -D < .github/cert_b64.txt > $CERT
           CERT_SIZE=$(wc -c < $CERT | tr -d ' ')
           echo "Cert size: $CERT_SIZE bytes"
@@ -30,60 +29,42 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
           security import $CERT -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KCH
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KCH
-          # CRITICAL: keep login keychain in the search list so Apple root certs are available
           security list-keychain -d user -s $KCH login.keychain-db
           echo "=== Keychain search list ==="
           security list-keychain -d user
           echo "=== Identities in keychain ==="
           security find-identity -v -p codesigning $KCH
-          echo "=== Certificate SHA-1 ==="
-          security find-identity -v -p codesigning $KCH | grep "iPhone Distribution" | head -1
       - name: Install Provisioning Profile
         run: |
           PP_UUID="1d9c5356-3263-4fa3-9a22-5a94768d7d38"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           base64 -d < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null || \
           base64 -D < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
-          PP_SIZE=$(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision | tr -d ' ')
           echo "Profile installed: ${PP_UUID}"
-          echo "Profile size: $PP_SIZE bytes"
-          if [ "$PP_SIZE" -lt 100 ]; then
-            echo "ERROR: Profile file is too small ($PP_SIZE bytes). Decode may have failed."
-            exit 1
-          fi
-          echo "=== Profile details ==="
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -A1 'Name\|TeamIdentifier\|UUID\|ExpirationDate' || echo "Could not parse profile"
-          echo "=== Certificates in profile ==="
-          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -c '<data>' || echo "0 certs"
-          echo "=== All installed profiles ==="
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
       - name: Patch Project for Manual Signing
         run: |
           PBXPROJ="CropsIntel.xcodeproj/project.pbxproj"
           echo "=== Before patch ==="
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY' "$PBXPROJ" || true
-
-          # Switch to manual signing
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' "$PBXPROJ"
-
-          # Use python to safely insert signing settings (avoids BSD sed newline issues)
-          python3 - "$PBXPROJ" << 'PYEOF'
-import sys
-path = sys.argv[1]
-with open(path, 'r') as f:
-    content = f.read()
-# Insert signing settings after each DEVELOPMENT_TEAM line
-old = 'DEVELOPMENT_TEAM = 754P32CRTB;'
-new = '''DEVELOPMENT_TEAM = 754P32CRTB;
-\t\t\t\tPROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";
-\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";
-\t\t\t\tCODE_SIGN_IDENTITY = "iPhone Distribution";'''
-content = content.replace(old, new)
-with open(path, 'w') as f:
-    f.write(content)
-print("Patched successfully")
-PYEOF
-
+          python3 << 'PYEOF'
+          import sys
+          path = "CropsIntel.xcodeproj/project.pbxproj"
+          with open(path, 'r') as f:
+              content = f.read()
+          old = 'DEVELOPMENT_TEAM = 754P32CRTB;'
+          new_block = (
+              'DEVELOPMENT_TEAM = 754P32CRTB;\n'
+              '\t\t\t\tPROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";\n'
+              '\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";\n'
+              '\t\t\t\tCODE_SIGN_IDENTITY = "iPhone Distribution";'
+          )
+          content = content.replace(old, new_block)
+          with open(path, 'w') as f:
+              f.write(content)
+          print("Patched successfully")
+          PYEOF
           echo "=== After patch ==="
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY\|DEVELOPMENT_TEAM' "$PBXPROJ" || true
       - name: Build Archive
@@ -92,14 +73,7 @@ PYEOF
         run: |
           KCH=$RUNNER_TEMP/app.keychain-db
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KCH
-          echo "=== Code signing identity ==="
           security find-identity -v -p codesigning $KCH
-          echo "=== Installed profiles ==="
-          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo "--- $f ---"
-            security cms -D -i "$f" 2>/dev/null | grep -A1 '<key>Name</key>' | tail -1 || true
-            security cms -D -i "$f" 2>/dev/null | grep -A1 '<key>UUID</key>' | tail -1 || true
-          done
           xcodebuild archive \
             -project CropsIntel.xcodeproj \
             -scheme CropsIntel \
@@ -114,7 +88,7 @@ PYEOF
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
       - name: Export IPA
         run: |
-          cat > $RUNNER_TEMP/export.plist << PLIST
+          cat > $RUNNER_TEMP/export.plist << 'EXPORTPLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -136,7 +110,7 @@ PYEOF
             <false/>
           </dict>
           </plist>
-          PLIST
+          EXPORTPLIST
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/export.plist \
