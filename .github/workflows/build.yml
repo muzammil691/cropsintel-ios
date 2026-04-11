@@ -36,8 +36,13 @@ jobs:
         run: |
           PP=$RUNNER_TEMP/pp.mobileprovision
           echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 -d > $PP
+          echo "Profile size: $(wc -c < $PP) bytes"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP ~/Library/MobileDevice/Provisioning\ Profiles
+          # Extract UUID and rename file so Xcode can find it
+          UUID=$(security cms -D -i $PP | plutil -extract UUID xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
+          echo "Profile UUID: $UUID"
+          cp $PP ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+          echo "PP_UUID=$UUID" >> $GITHUB_ENV
 
       - name: Build Archive
         run: |
@@ -48,7 +53,9 @@ jobs:
             -configuration Release \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
             DEVELOPMENT_TEAM=754P32CRTB \
-            CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PP_UUID"
 
       - name: Export IPA
         run: |
