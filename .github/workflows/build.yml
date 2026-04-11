@@ -1,20 +1,15 @@
 name: Build and Upload to App Store
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: macos-14
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
-
       - name: Install Certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
@@ -40,10 +35,9 @@ jobs:
           security find-identity -v -p codesigning $KCH
           echo "=== Certificate SHA-1 ==="
           security find-identity -v -p codesigning $KCH | grep "iPhone Distribution" | head -1
-
       - name: Install Provisioning Profile
         run: |
-          PP_UUID="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970"
+          PP_UUID="1d9c5356-3263-4fa3-9a22-5a94768d7d38"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           base64 --decode < .github/profile_b64.txt > ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision
           PP_SIZE=$(wc -c < ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision | tr -d ' ')
@@ -59,7 +53,6 @@ jobs:
           security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/${PP_UUID}.mobileprovision 2>/dev/null | grep -c '<data>' || echo "0 certs"
           echo "=== All installed profiles ==="
           ls -la ~/Library/MobileDevice/Provisioning\ Profiles/
-
       - name: Patch Project for Manual Signing
         run: |
           PBXPROJ="CropsIntel.xcodeproj/project.pbxproj"
@@ -67,12 +60,11 @@ jobs:
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY' "$PBXPROJ" || true
           sed -i '' 's/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g' "$PBXPROJ"
           sed -i '' '/DEVELOPMENT_TEAM = 754P32CRTB;/a\
-            PROVISIONING_PROFILE = "8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970";\
+            PROVISIONING_PROFILE = "1d9c5356-3263-4fa3-9a22-5a94768d7d38";\
             PROVISIONING_PROFILE_SPECIFIER = "CropsIntel AppStore Distribution";\
             CODE_SIGN_IDENTITY = "iPhone Distribution";' "$PBXPROJ"
           echo "=== After patch ==="
           grep -n 'CODE_SIGN_STYLE\|PROVISIONING_PROFILE\|CODE_SIGN_IDENTITY\|DEVELOPMENT_TEAM' "$PBXPROJ" || true
-
       - name: Build Archive
         env:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
@@ -96,9 +88,8 @@ jobs:
             DEVELOPMENT_TEAM=754P32CRTB \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE="8180c4e4-1cd2-4bb5-9d4c-f71ae69f7970" \
+            PROVISIONING_PROFILE="1d9c5356-3263-4fa3-9a22-5a94768d7d38" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KCH"
-
       - name: Export IPA
         run: |
           cat > $RUNNER_TEMP/export.plist << PLIST
@@ -128,7 +119,6 @@ jobs:
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/export.plist \
             -exportPath $RUNNER_TEMP/export
-
       - name: Upload to TestFlight
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
@@ -139,7 +129,6 @@ jobs:
             --file $RUNNER_TEMP/export/CropsIntel.ipa \
             --apiKey $ASC_KEY_ID \
             --apiIssuer $ASC_ISSUER
-
       - name: Cleanup
         if: always()
         run: security delete-keychain $RUNNER_TEMP/app.keychain-db || true
