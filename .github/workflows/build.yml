@@ -30,21 +30,19 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KCH
           security list-keychain -d user -s $KCH
 
-      - name: Install Provisioning Profile
+      - name: Setup App Store Connect API Key
         env:
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
-          PP=$RUNNER_TEMP/pp.mobileprovision
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 -d > $PP
-          echo "Profile size: $(wc -c < $PP) bytes"
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          # Extract UUID and rename file so Xcode can find it
-          UUID=$(security cms -D -i $PP | plutil -extract UUID xml1 -o - - | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
-          echo "Profile UUID: $UUID"
-          cp $PP ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-          echo "PP_UUID=$UUID" >> $GITHUB_ENV
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          echo "Key written: $(wc -c < ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8) bytes"
 
       - name: Build Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
         run: |
           xcodebuild archive \
             -project CropsIntel.xcodeproj \
@@ -52,12 +50,17 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_ISSUER \
             DEVELOPMENT_TEAM=754P32CRTB \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$PP_UUID"
+            CODE_SIGN_STYLE=Automatic
 
       - name: Export IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
         run: |
           cat > $RUNNER_TEMP/export.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
@@ -78,7 +81,11 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/CropsIntel.xcarchive \
             -exportOptionsPlist $RUNNER_TEMP/export.plist \
-            -exportPath $RUNNER_TEMP/export
+            -exportPath $RUNNER_TEMP/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_ISSUER
 
       - name: Upload to TestFlight
         env:
@@ -86,8 +93,6 @@ jobs:
           ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           xcrun altool --upload-app \
             --type ios \
             --file $RUNNER_TEMP/export/CropsIntel.ipa \
