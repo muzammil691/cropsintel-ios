@@ -119,7 +119,12 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ASC_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
         run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_CONTENT" > ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          echo "AuthKey file written to ~/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          ls -la ~/private_keys/
           xcrun altool --upload-app \
             --type ios \
             --file $RUNNER_TEMP/export/CropsIntel.ipa \
