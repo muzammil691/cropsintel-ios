@@ -3,7 +3,7 @@ import WebKit
 
 struct CropsIntelWebView: UIViewRepresentable {
 
-    private let url = URL(string: "https://www.cropsintel.com")!
+    private let url = URL(string: "https://cropsintel.net")!
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -19,7 +19,7 @@ struct CropsIntelWebView: UIViewRepresentable {
         webView.scrollView.bounces = false
         webView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
         webView.isOpaque = false
-        webView.customUserAgent = "CropsIntel-iOS/1.0 (Lovable)"
+        webView.customUserAgent = "CropsIntel-iOS/2.0 (V2)"
         webView.load(URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 30))
         return webView
     }
