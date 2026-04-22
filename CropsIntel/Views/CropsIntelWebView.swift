@@ -34,8 +34,11 @@ struct CropsIntelWebView: UIViewRepresentable {
         // V2 user agent — site detects native shell for optimized mobile experience
         webView.customUserAgent = "CropsIntel-iOS/2.0 (V2-Autonomous)"
 
-        // Use revalidating cache to always get latest V2 builds
-        webView.load(URLRequest(url: url, cachePolicy: .reloadRevalidatingCacheData, timeoutInterval: 30))
+        // Clear all cached data on launch to avoid stale content after domain changes
+        let dataStore = WKWebsiteDataStore.default()
+        dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { }
+        // Force fresh load — never use cached 404s or redirects
+        webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30))
         return webView
     }
 

@@ -20,7 +20,10 @@ struct CropsIntelWebView: UIViewRepresentable {
         webView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
         webView.isOpaque = false
         webView.customUserAgent = "CropsIntel-iOS/2.0 (V2)"
-        webView.load(URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 30))
+        // Clear all cached data on launch to avoid stale content
+        let dataStore = WKWebsiteDataStore.default()
+        dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { }
+        webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30))
         return webView
     }
 
