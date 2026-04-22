@@ -3,7 +3,7 @@ import WebKit
 
 struct CropsIntelWebView: UIViewRepresentable {
 
-    private let url = URL(string: "https://cropsintel.net")!
+    private let url = URL(string: "https://cropsintel.com")!
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 

@@ -6,8 +6,8 @@ import WebKit
 /// Any update pushed to the V2 repo is instantly live via GitHub Pages auto-deploy.
 struct CropsIntelWebView: UIViewRepresentable {
 
-    // V2 platform — cropsintel.net (will also be served at cropsintel.com after domain cutover)
-    private let url = URL(string: "https://cropsintel.net")!
+    // V2 platform — cropsintel.com (primary domain, GitHub Pages)
+    private let url = URL(string: "https://cropsintel.com")!
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -44,7 +44,7 @@ struct CropsIntelWebView: UIViewRepresentable {
     // MARK: - Coordinator
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
 
-        // Allow all navigation within cropsintel.net; open external links in Safari
+        // Allow all navigation within cropsintel.com; open external links in Safari
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
